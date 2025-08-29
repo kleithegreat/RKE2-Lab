@@ -1,0 +1,121 @@
+- name: Prepare All Nodes for RKE2
+  hosts: all
+  become: true
+  tasks:
+    - name: Disable and stop firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+
+- name: Configure RKE2 Server Node
+  hosts: rke2_servers
+  become: true
+  tasks:
+    - name: Run RKE2 installer script
+      ansible.builtin.shell: "curl -sfL https://get.rke2.io | sh -"
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Enable the RKE2 server service
+      ansible.builtin.service:
+        name: rke2-server
+        enabled: true
+
+    - name: Start the RKE2 server service
+      ansible.builtin.service:
+        name: rke2-server
+        state: started
+
+    - name: Wait for the node token to be created
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/rke2/server/node-token
+        timeout: 120
+
+    - name: Read the node token from the server
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/rke2/server/node-token
+      register: rke2_token_b64
+
+    - name: Store the token for agents to use
+      ansible.builtin.set_fact:
+        rke2_token: "{{ rke2_token_b64['content'] | b64decode | trim }}"
+
+- name: Configure RKE2 Agent Nodes
+  hosts: rke2_agents
+  become: true
+  tasks:
+    - name: Run RKE2 installer script (agent)
+      ansible.builtin.shell: "curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent sh -"
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Create the RKE2 config directory
+      ansible.builtin.file:
+        path: /etc/rancher/rke2/
+        state: directory
+        mode: '0755'
+
+    - name: Create the agent config.yaml
+      ansible.builtin.template:
+        src: rke2-agent-config.yaml.j2
+        dest: /etc/rancher/rke2/config.yaml
+        mode: '0644'
+      notify: Restart rke2-agent
+
+    - name: Enable and start the RKE2 agent service
+      ansible.builtin.service:
+        name: rke2-agent
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart rke2-agent
+      ansible.builtin.service:
+        name: rke2-agent
+        state: restarted
+
+- name: Configure kubectl for the rocky user
+  hosts: rke2_servers
+  tasks:
+    - name: Copy kubectl binary to /usr/local/bin
+      become: true
+      ansible.builtin.copy:
+        src: /var/lib/rancher/rke2/bin/kubectl
+        dest: /usr/local/bin/kubectl
+        remote_src: true  # MUST be true, since the source is on the remote host
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Create .kube directory for the rocky user
+      ansible.builtin.file:
+        path: "/home/rocky/.kube"
+        state: directory
+        owner: rocky
+        group: rocky
+        mode: '0755'
+
+    - name: Copy RKE2 kubeconfig to the rocky user's .kube directory
+      become: true
+      ansible.builtin.copy:
+        src: /etc/rancher/rke2/rke2.yaml
+        dest: "/home/rocky/.kube/config"
+        remote_src: true
+        owner: rocky
+        group: rocky
+        mode: '0600'
+
+    - name: Add KUBECONFIG variable to rocky's .bashrc
+      ansible.builtin.lineinfile:
+        path: "/home/rocky/.bashrc"
+        line: "export KUBECONFIG=/home/rocky/.kube/config"
+        create: true
+        owner: rocky
+        group: rocky
+        mode: '0644'

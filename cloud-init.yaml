@@ -1,0 +1,12 @@
+#cloud-config
+users:
+  - name: rocky
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_key}
+chpasswd:
+  list:
+    - rocky:rocky # this format <username>:<password>
+  expire: False

@@ -1,2 +1,10 @@
-.rke2_token
-VMs/
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+
+inventory.ini
+
+images/
+
+# Ansible temp files
+*.retry
