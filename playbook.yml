@@ -13,6 +13,12 @@
       ansible.posix.selinux:
         state: disabled
 
+    - name: Reboot to apply SELinux changes
+      ansible.builtin.reboot:
+        msg: "Rebooting nodes to apply SELinux changes"
+        connect_timeout: 5
+        reboot_timeout: 600
+
 - name: Configure RKE2 Server Node
   hosts: rke2_servers
   become: true

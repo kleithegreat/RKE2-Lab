@@ -17,21 +17,34 @@ data "local_file" "ssh_public_key" {
   filename = abspath(var.ssh_public_key)
 }
 
-# Create a cloud-init disk for node configuration
-resource "libvirt_cloudinit_disk" "common" {
-  name      = "${var.cluster_name}-common.iso"
-  pool      = libvirt_pool.default.name
-  user_data = templatefile("${path.module}/cloud-init.yaml", {
-    ssh_key = data.local_file.ssh_public_key.content
-  })
-}
-
 # Upload the base Rocky Linux image to the libvirt storage pool
 resource "libvirt_volume" "base_image" {
   name   = "${var.cluster_name}-base.qcow2"
-  pool   = libvirt_pool.default.name
+  pool   = "default"
   source = "${path.module}/images/rocky-9-cloud.qcow2"
   format = "qcow2"
+}
+
+# Cloud-init for Server Nodes
+resource "libvirt_cloudinit_disk" "server" {
+  count = var.server_nodes
+  name  = "${var.cluster_name}-server-${count.index}.iso"
+  pool  = "default"
+  user_data = templatefile("${path.module}/cloud-init.yaml", {
+    ssh_key = data.local_file.ssh_public_key.content
+    fqdn = "${var.cluster_name}-server-${count.index}.${var.cluster_name}.local"
+  })
+}
+
+# Cloud-init for Agent Nodes
+resource "libvirt_cloudinit_disk" "agent" {
+  count = var.agent_nodes
+  name  = "${var.cluster_name}-agent-${count.index}.iso"
+  pool  = "default"
+  user_data = templatefile("${path.module}/cloud-init.yaml", {
+    ssh_key = data.local_file.ssh_public_key.content
+    fqdn = "${var.cluster_name}-agent-${count.index}.${var.cluster_name}.local"
+  })
 }
 
 # --- Server Nodes ---
@@ -50,7 +63,7 @@ resource "libvirt_domain" "server" {
   cpu {
     mode = "host-passthrough"
   }
-  cloudinit  = libvirt_cloudinit_disk.common.id
+  cloudinit = libvirt_cloudinit_disk.server[count.index].id
   autostart  = true
 
   network_interface {
@@ -91,7 +104,7 @@ resource "libvirt_domain" "agent" {
   cpu {
     mode = "host-passthrough"
   }
-  cloudinit  = libvirt_cloudinit_disk.common.id
+  cloudinit = libvirt_cloudinit_disk.agent[count.index].id
   autostart  = true
 
   network_interface {

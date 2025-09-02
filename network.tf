@@ -17,9 +17,3 @@ resource "libvirt_network" "cluster_network" {
   }
   autostart = true
 }
-
-resource "libvirt_pool" "default" {
-  name = "default"
-  type = "dir"
-  path = "/var/lib/libvirt/images"
-}
