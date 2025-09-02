@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: all create apply playbook destroy clean setup-pool ssh
+.PHONY: all create apply playbook destroy clean setup-pool ssh refresh-known-hosts
 
 all: create
 
@@ -43,3 +43,10 @@ setup-pool:
 ssh:
 	@echo ">>> Connecting to the rke2-lab-server-0 node..."
 	@ssh rocky@$$(grep 'rke2-lab-server-0' inventory.ini | cut -d'=' -f2)
+
+refresh-known-hosts:
+	@for ip in $$(awk -F= '/ansible_host/ {print $$2}' inventory.ini); do \
+	  ssh-keygen -R $$ip >/dev/null 2>&1 || true; \
+	  ssh-keyscan -H $$ip >> $$HOME/.ssh/known_hosts; \
+	done; \
+	echo "✅ known_hosts refreshed for all cluster nodes."

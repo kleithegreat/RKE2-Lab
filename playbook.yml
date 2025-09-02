@@ -1,106 +1,205 @@
-- name: Prepare All Nodes for RKE2
+# 0) Base packages (curl, etc.) for all nodes
+- name: Ensure base packages are present
   hosts: all
   become: true
   tasks:
-    - name: Disable and stop firewalld
-      ansible.builtin.service:
-        name: firewalld
-        state: stopped
-        enabled: false
-      ignore_errors: true
+    - name: Install base packages needed for install and networking
+      package:
+        name:
+          - curl
+          - iproute
+          - conntrack-tools
+        state: present
 
-    - name: Disable SELinux
+# 1) Keep SELinux enforcing + firewalld; prep kernel + sysctls
+- name: Prepare all nodes (SELinux, kernel, firewalld)
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure SELinux is enforcing (idempotent)
       ansible.posix.selinux:
-        state: disabled
+        policy: targeted
+        state: enforcing
 
-    - name: Reboot to apply SELinux changes
-      ansible.builtin.reboot:
-        msg: "Rebooting nodes to apply SELinux changes"
-        connect_timeout: 5
-        reboot_timeout: 600
+    - name: Load kernel modules at boot
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        mode: '0644'
+        content: |
+          overlay
+          br_netfilter
 
+    - name: Load overlay module now
+      modprobe:
+        name: overlay
+        state: present
+
+    - name: Load br_netfilter module now
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Set Kubernetes-friendly sysctls
+      copy:
+        dest: /etc/sysctl.d/99-k8s.conf
+        mode: '0644'
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+
+    - name: Apply sysctl settings
+      command: sysctl --system
+
+    - name: Ensure firewalld is installed and enabled
+      package:
+        name: firewalld
+        state: present
+
+    - name: Start and enable firewalld
+      service:
+        name: firewalld
+        state: started
+        enabled: true
+
+    # Inter-node: Flannel VXLAN
+    - name: Allow VXLAN for Flannel between nodes
+      ansible.posix.firewalld:
+        rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=8472 protocol=udp accept"
+        permanent: true
+        immediate: true
+        state: enabled
+
+    # Optional: kubelet metrics if you’ll run metrics-server
+    - name: Allow kubelet metrics (10250/tcp) within cluster CIDR
+      ansible.posix.firewalld:
+        rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=10250 protocol=tcp accept"
+        permanent: true
+        immediate: true
+        state: enabled
+
+    # Optional: NodePort range (guarded by open_nodeports var)
+    - name: Allow NodePort range to cluster CIDR (TCP)
+      ansible.posix.firewalld:
+        rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=30000-32767 protocol=tcp accept"
+        permanent: true
+        immediate: true
+        state: "{{ 'enabled' if open_nodeports | bool else 'disabled' }}"
+    - name: Allow NodePort range to cluster CIDR (UDP)
+      ansible.posix.firewalld:
+        rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=30000-32767 protocol=udp accept"
+        permanent: true
+        immediate: true
+        state: "{{ 'enabled' if open_nodeports | bool else 'disabled' }}"
+
+# 2) Server: install + open control-plane ports + start
 - name: Configure RKE2 Server Node
   hosts: rke2_servers
   become: true
   tasks:
-    - name: Run RKE2 installer script
-      ansible.builtin.shell: "curl -sfL https://get.rke2.io | sh -"
+    - name: Run RKE2 installer script (server)
+      shell: "curl -sfL https://get.rke2.io | sh -"
       args:
         creates: /usr/local/bin/rke2
 
     - name: Enable the RKE2 server service
-      ansible.builtin.service:
+      service:
         name: rke2-server
         enabled: true
 
+    - name: Open server control-plane ports to cluster CIDR
+      ansible.posix.firewalld:
+        rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port={{ item.port }} protocol=tcp accept"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop:
+        - { port: 6443 }      # Kubernetes API
+        - { port: 9345 }      # RKE2 supervisor/registration
+        - { port: 2379-2380 } # etcd (HA or future scale-out)
+      notify: Reload firewalld
+
     - name: Start the RKE2 server service
-      ansible.builtin.service:
+      service:
         name: rke2-server
         state: started
 
     - name: Wait for the node token to be created
-      ansible.builtin.wait_for:
+      wait_for:
         path: /var/lib/rancher/rke2/server/node-token
-        timeout: 120
+        timeout: 300
 
     - name: Read the node token from the server
-      ansible.builtin.slurp:
+      slurp:
         src: /var/lib/rancher/rke2/server/node-token
       register: rke2_token_b64
 
     - name: Store the token for agents to use
-      ansible.builtin.set_fact:
-        rke2_token: "{{ rke2_token_b64['content'] | b64decode | trim }}"
+      set_fact:
+        rke2_token: "{{ rke2_token_b64.content | b64decode | trim }}"
+    
+  handlers:
+  - name: Reload firewalld
+    service:
+      name: firewalld
+      state: reloaded
 
+# 3) Agents: install as agent + configure + start
 - name: Configure RKE2 Agent Nodes
   hosts: rke2_agents
   become: true
   tasks:
     - name: Run RKE2 installer script (agent)
-      ansible.builtin.shell: "curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent sh -"
+      shell: "curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent sh -"
       args:
         creates: /usr/local/bin/rke2
 
     - name: Create the RKE2 config directory
-      ansible.builtin.file:
+      file:
         path: /etc/rancher/rke2/
         state: directory
         mode: '0755'
 
     - name: Create the agent config.yaml
-      ansible.builtin.template:
+      template:
         src: rke2-agent-config.yaml.j2
         dest: /etc/rancher/rke2/config.yaml
         mode: '0644'
       notify: Restart rke2-agent
 
     - name: Enable and start the RKE2 agent service
-      ansible.builtin.service:
+      service:
         name: rke2-agent
         enabled: true
         state: started
 
   handlers:
     - name: Restart rke2-agent
-      ansible.builtin.service:
+      service:
         name: rke2-agent
         state: restarted
+    - name: Reload firewalld
+      service:
+        name: firewalld
+        state: reloaded
 
+# 4) Convenience: kubectl for rocky on the server
 - name: Configure kubectl for the rocky user
   hosts: rke2_servers
   tasks:
     - name: Copy kubectl binary to /usr/local/bin
       become: true
-      ansible.builtin.copy:
+      copy:
         src: /var/lib/rancher/rke2/bin/kubectl
         dest: /usr/local/bin/kubectl
-        remote_src: true  # MUST be true, since the source is on the remote host
+        remote_src: true
         mode: '0755'
         owner: root
         group: root
 
     - name: Create .kube directory for the rocky user
-      ansible.builtin.file:
+      become: true
+      file:
         path: "/home/rocky/.kube"
         state: directory
         owner: rocky
@@ -109,7 +208,7 @@
 
     - name: Copy RKE2 kubeconfig to the rocky user's .kube directory
       become: true
-      ansible.builtin.copy:
+      copy:
         src: /etc/rancher/rke2/rke2.yaml
         dest: "/home/rocky/.kube/config"
         remote_src: true
@@ -118,7 +217,8 @@
         mode: '0600'
 
     - name: Add KUBECONFIG variable to rocky's .bashrc
-      ansible.builtin.lineinfile:
+      become: true
+      lineinfile:
         path: "/home/rocky/.bashrc"
         line: "export KUBECONFIG=/home/rocky/.kube/config"
         create: true

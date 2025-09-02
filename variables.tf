@@ -45,3 +45,9 @@ variable "ssh_public_key" {
   type        = string
   default     = "/home/child4/.ssh/id_ed25519.pub"
 }
+
+variable "cluster_cidr" {
+  description = "Cluster network in CIDR notation for inter-node traffic."
+  type        = string
+  default     = "10.17.3.0/24"
+}

@@ -2,7 +2,7 @@ resource "libvirt_network" "cluster_network" {
   name      = "${var.cluster_name}-net"
   mode      = "nat"
   domain    = "${var.cluster_name}.local"
-  addresses = ["10.17.3.0/24"]
+  addresses = [var.cluster_cidr]
   dhcp {
     enabled = true
   }
