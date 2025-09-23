@@ -10,7 +10,7 @@ ${agent.name} ansible_host=${agent.network_interface[0].addresses[0]}
 
 [all:vars]
 ansible_user=rocky
-ansible_ssh_private_key_file=~/.ssh/id_ed25519
+ansible_ssh_private_key_file=~/.ssh/id_rsa
 ansible_python_interpreter=/usr/bin/python3
 cluster_cidr=${cluster_cidr}
 open_nodeports=${open_nodeports}

@@ -32,7 +32,7 @@ resource "libvirt_cloudinit_disk" "server" {
   pool  = "default"
   user_data = templatefile("${path.module}/cloud-init.yaml", {
     ssh_key = data.local_file.ssh_public_key.content
-    fqdn = "${var.cluster_name}-server-${count.index}.${var.cluster_name}.local"
+    fqdn    = "${var.cluster_name}-server-${count.index}.${var.cluster_name}.local"
   })
 }
 
@@ -43,7 +43,7 @@ resource "libvirt_cloudinit_disk" "agent" {
   pool  = "default"
   user_data = templatefile("${path.module}/cloud-init.yaml", {
     ssh_key = data.local_file.ssh_public_key.content
-    fqdn = "${var.cluster_name}-agent-${count.index}.${var.cluster_name}.local"
+    fqdn    = "${var.cluster_name}-agent-${count.index}.${var.cluster_name}.local"
   })
 }
 
@@ -56,15 +56,15 @@ resource "libvirt_volume" "server_disk" {
 }
 
 resource "libvirt_domain" "server" {
-  count      = var.server_nodes
-  name       = "${var.cluster_name}-server-${count.index}"
-  memory     = var.server_memory
-  vcpu       = var.server_vcpu
+  count  = var.server_nodes
+  name   = "${var.cluster_name}-server-${count.index}"
+  memory = var.server_memory
+  vcpu   = var.server_vcpu
   cpu {
     mode = "host-passthrough"
   }
   cloudinit = libvirt_cloudinit_disk.server[count.index].id
-  autostart  = true
+  autostart = true
 
   network_interface {
     network_id     = libvirt_network.cluster_network.id
@@ -82,8 +82,8 @@ resource "libvirt_domain" "server" {
   }
 
   graphics {
-    type        = "spice"
-    listen_type = "address"
+    type        = "vnc"
+    listen_type = "none"
     autoport    = true
   }
 }
@@ -97,15 +97,15 @@ resource "libvirt_volume" "agent_disk" {
 }
 
 resource "libvirt_domain" "agent" {
-  count      = var.agent_nodes
-  name       = "${var.cluster_name}-agent-${count.index}"
-  memory     = var.agent_memory
-  vcpu       = var.agent_vcpu
+  count  = var.agent_nodes
+  name   = "${var.cluster_name}-agent-${count.index}"
+  memory = var.agent_memory
+  vcpu   = var.agent_vcpu
   cpu {
     mode = "host-passthrough"
   }
   cloudinit = libvirt_cloudinit_disk.agent[count.index].id
-  autostart  = true
+  autostart = true
 
   network_interface {
     network_id     = libvirt_network.cluster_network.id
@@ -123,8 +123,8 @@ resource "libvirt_domain" "agent" {
   }
 
   graphics {
-    type        = "spice"
-    listen_type = "address"
+    type        = "vnc"
+    listen_type = "none"
     autoport    = true
   }
 }
