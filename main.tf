@@ -52,7 +52,7 @@ resource "libvirt_volume" "server_disk" {
   count          = var.server_nodes
   name           = "${var.cluster_name}-server-${count.index}.qcow2"
   base_volume_id = libvirt_volume.base_image.id
-  size           = 20 * 1024 * 1024 * 1024 # 20GB
+  size           = var.server_disk_size_gb * 1024 * 1024 * 1024
 }
 
 resource "libvirt_domain" "server" {
@@ -67,8 +67,8 @@ resource "libvirt_domain" "server" {
   autostart = true
 
   network_interface {
-    network_id     = libvirt_network.cluster_network.id
-    wait_for_lease = true
+    macvtap        = "enp128s31f6"
+    # wait_for_lease = true
   }
 
   disk {

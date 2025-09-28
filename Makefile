@@ -1,26 +1,32 @@
 SHELL := /bin/bash
 
-.PHONY: all create apply playbook destroy clean setup-pool ssh refresh-known-hosts
+.PHONY: all create apply playbook destroy clean setup-pool ssh refresh-known-hosts \
+        cluster-init testvm-init testvm-up testvm-destroy
 
 all: create
 
+# --- Force the default workspace for CLUSTER actions --------------------------
+cluster-init:
+	@terraform workspace select default >/dev/null 2>&1 || terraform workspace new default
+	@echo "✅ Using Terraform workspace: default"
+
 # Creates the full cluster: provisions VMs and then configures them with Ansible.
-create: apply playbook
+create: cluster-init apply playbook
 	@echo "✅ Cluster creation and configuration complete."
 
 # Provisions VMs and network infrastructure using Terraform.
-apply:
+apply: cluster-init
 	@echo ">>> Provisioning infrastructure with Terraform..."
 	terraform apply -auto-approve
 
 # Configures the running VMs with the Ansible playbook.
 # Best run after 'make apply' or as part of 'make create'.
-playbook:
+playbook: cluster-init
 	@echo ">>> Configuring nodes with Ansible..."
 	ansible-playbook playbook.yml
 
 # Destroys the infrastructure gracefully using Terraform.
-destroy:
+destroy: cluster-init
 	@echo ">>> Destroying Terraform-managed infrastructure..."
 	terraform destroy -auto-approve
 
@@ -50,3 +56,38 @@ refresh-known-hosts:
 	  ssh-keyscan -H $$ip >> $$HOME/.ssh/known_hosts; \
 	done; \
 	echo "✅ known_hosts refreshed for all cluster nodes."
+
+# --- Single, isolated TEST VM (separate Terraform workspace) ------------------
+
+# Create/select the 'testvm' workspace so this never touches your main cluster
+testvm-init:
+	@terraform workspace select testvm >/dev/null 2>&1 || terraform workspace new testvm
+	@echo "✅ Using Terraform workspace: testvm"
+
+# Bring up one standalone VM with bigger RAM/CPU/disk under its own network/prefix
+# Nothing else (no Ansible). Safe to run alongside your main cluster.
+testvm-up: testvm-init
+	@echo ">>> Provisioning isolated test VM..."
+	terraform apply -auto-approve \
+	  -var 'cluster_name=rke2-testvm' \
+	  -var 'server_nodes=1' -var 'agent_nodes=0' \
+	  -var 'server_vcpu=4' -var 'server_memory=8192' \
+	  -var 'server_disk_size_gb=40' \
+	  -var 'cluster_cidr=10.77.7.0/24' \
+	  -target=libvirt_network.cluster_network \
+	  -target=libvirt_volume.base_image \
+	  -target=libvirt_cloudinit_disk.server[0] \
+	  -target=libvirt_volume.server_disk[0] \
+	  -target=libvirt_domain.server[0]
+	@echo "✅ Test VM up (workspace: testvm, name prefix: rke2-testvm)"
+
+# Tear down only the test VM stack in the 'testvm' workspace.
+testvm-destroy: testvm-init
+	@echo ">>> Destroying isolated test VM..."
+	terraform destroy -auto-approve \
+	  -var 'cluster_name=rke2-testvm' \
+	  -var 'server_nodes=1' -var 'agent_nodes=0' \
+	  -var 'server_vcpu=4' -var 'server_memory=8192' \
+	  -var 'server_disk_size_gb=40' \
+	  -var 'cluster_cidr=10.77.7.0/24'
+	@echo "🗑️  Test VM destroyed (workspace: testvm)"
