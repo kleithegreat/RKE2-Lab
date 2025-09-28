@@ -1,18 +1,18 @@
 [rke2_servers]
-%{ for s in servers ~}
-%{ if s.ip != "" ~}
-${s.name} ansible_host=${s.ip}
+%{ for name, ip in servers ~}
+%{ if ip != "" ~}
+${name} ansible_host=${ip}
 %{ else ~}
-# ${s.name} ansible_host=<pending> (no IP discovered yet)
+# ${name} ansible_host=<pending> (no IP discovered yet)
 %{ endif ~}
 %{ endfor ~}
 
 [rke2_agents]
-%{ for a in agents ~}
-%{ if a.ip != "" ~}
-${a.name} ansible_host=${a.ip}
+%{ for name, ip in agents ~}
+%{ if ip != "" ~}
+${name} ansible_host=${ip}
 %{ else ~}
-# ${a.name} ansible_host=<pending> (no IP discovered yet)
+# ${name} ansible_host=<pending> (no IP discovered yet)
 %{ endif ~}
 %{ endfor ~}
 
