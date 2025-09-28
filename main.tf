@@ -9,7 +9,7 @@ terraform {
 
 # Configure the libvirt provider
 provider "libvirt" {
-  uri = "qemu:///session"
+  uri = "qemu:///system"
 }
 
 # Use a local file for the SSH key
