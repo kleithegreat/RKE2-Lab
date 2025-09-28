@@ -30,9 +30,9 @@ echo "--- Destroying and Undefining network '${PREFIX}-net' ---"
 virsh net-destroy "${PREFIX}-net" &>/dev/null || echo "Network '${PREFIX}-net' was not active."
 virsh net-undefine "${PREFIX}-net" &>/dev/null || echo "Network '${PREFIX}-net' was not defined."
 
-echo "--- Destroying and Undefining the '${POOL}' pool ---"
-virsh pool-destroy "${POOL}" &>/dev/null || echo "Pool '${POOL}' was not active."
-virsh pool-undefine "${POOL}" &>/dev/null || echo "Pool '${POOL}' was not defined."
+# echo "--- Destroying and Undefining the '${POOL}' pool ---"
+# virsh pool-destroy "${POOL}" &>/dev/null || echo "Pool '${POOL}' was not active."
+# virsh pool-undefine "${POOL}" &>/dev/null || echo "Pool '${POOL}' was not defined."
 
 echo "--- Deleting local Terraform and Ansible files ---"
 rm -f terraform.tfstate* inventory.ini
