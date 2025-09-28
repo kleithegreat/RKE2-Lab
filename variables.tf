@@ -49,7 +49,7 @@ variable "agent_memory" {
 variable "ssh_public_key" {
   description = "Public SSH key to inject into the nodes for access."
   type        = string
-  default     = "/home/kevinlei/.ssh/id_rsa.pub"
+  default     = "/home/child4/.ssh/id_ed25519.pub"
 }
 
 variable "cluster_cidr" {

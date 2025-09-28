@@ -15,19 +15,11 @@
 - name: Prepare all nodes (SELinux, kernel, firewalld)
   hosts: all
   become: true
-  collections:
-    - community.general
-    - ansible.posix
   tasks:
     - name: Ensure SELinux is enforcing (idempotent)
       ansible.posix.selinux:
         policy: targeted
         state: enforcing
-
-    - name: Ensure kmod is installed (provides /sbin/modprobe)
-      package:
-        name: kmod
-        state: present
 
     - name: Load kernel modules at boot
       copy:
@@ -38,12 +30,12 @@
           br_netfilter
 
     - name: Load overlay module now
-      community.general.modprobe:
+      modprobe:
         name: overlay
         state: present
 
     - name: Load br_netfilter module now
-      community.general.modprobe:
+      modprobe:
         name: br_netfilter
         state: present
 
@@ -70,6 +62,7 @@
         state: started
         enabled: true
 
+    # Inter-node: Flannel VXLAN
     - name: Allow VXLAN for Flannel between nodes
       ansible.posix.firewalld:
         rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=8472 protocol=udp accept"
@@ -77,6 +70,7 @@
         immediate: true
         state: enabled
 
+    # Optional: kubelet metrics if you’ll run metrics-server
     - name: Allow kubelet metrics (10250/tcp) within cluster CIDR
       ansible.posix.firewalld:
         rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=10250 protocol=tcp accept"
@@ -84,20 +78,19 @@
         immediate: true
         state: enabled
 
+    # Optional: NodePort range (guarded by open_nodeports var)
     - name: Allow NodePort range to cluster CIDR (TCP)
       ansible.posix.firewalld:
         rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=30000-32767 protocol=tcp accept"
         permanent: true
         immediate: true
         state: "{{ 'enabled' if open_nodeports | bool else 'disabled' }}"
-
     - name: Allow NodePort range to cluster CIDR (UDP)
       ansible.posix.firewalld:
         rich_rule: "rule family=ipv4 source address={{ cluster_cidr }} port port=30000-32767 protocol=udp accept"
         permanent: true
         immediate: true
         state: "{{ 'enabled' if open_nodeports | bool else 'disabled' }}"
-
 
 # 2) Server: install + open control-plane ports + start
 - name: Configure RKE2 Server Node
