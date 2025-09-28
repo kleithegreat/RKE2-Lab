@@ -7,7 +7,7 @@ variable "cluster_name" {
 variable "server_nodes" {
   description = "Number of server (master) nodes to create."
   type        = number
-  default     = 0
+  default     = 1
 }
 
 variable "agent_nodes" {
@@ -19,19 +19,19 @@ variable "agent_nodes" {
 variable "server_vcpu" {
   description = "Number of vCPUs for server nodes."
   type        = number
-  default     = 2
+  default     = 8
 }
 
 variable "server_memory" {
   description = "Amount of memory in MB for server nodes."
   type        = number
-  default     = 4096 # 4GB
+  default     = 8192
 }
 
 variable "server_disk_size_gb" {
   description = "Disk size (GB) for server nodes."
   type        = number
-  default     = 20
+  default     = 50
 }
 
 variable "agent_vcpu" {
