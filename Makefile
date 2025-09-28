@@ -64,8 +64,8 @@ testvm-init:
 	@terraform workspace select testvm >/dev/null 2>&1 || terraform workspace new testvm
 	@echo "✅ Using Terraform workspace: testvm"
 
-# Bring up one standalone VM with bigger RAM/CPU/disk under its own network/prefix
-# Nothing else (no Ansible). Safe to run alongside your main cluster.
+# Bring up one standalone VM with bigger RAM/CPU/disk.
+# Uses macvtap (bridged) networking from main.tf; does NOT create the NAT network.
 testvm-up: testvm-init
 	@echo ">>> Provisioning isolated test VM..."
 	terraform apply -auto-approve \
@@ -73,12 +73,7 @@ testvm-up: testvm-init
 	  -var 'server_nodes=1' -var 'agent_nodes=0' \
 	  -var 'server_vcpu=4' -var 'server_memory=8192' \
 	  -var 'server_disk_size_gb=40' \
-	  -var 'cluster_cidr=10.77.7.0/24' \
-	  -target=libvirt_network.cluster_network \
-	  -target=libvirt_volume.base_image \
-	  -target=libvirt_cloudinit_disk.server[0] \
-	  -target=libvirt_volume.server_disk[0] \
-	  -target=libvirt_domain.server[0]
+	  -var 'cluster_cidr=10.77.7.0/24'
 	@echo "✅ Test VM up (workspace: testvm, name prefix: rke2-testvm)"
 
 # Tear down only the test VM stack in the 'testvm' workspace.

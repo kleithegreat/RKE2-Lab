@@ -108,7 +108,7 @@ resource "libvirt_domain" "agent" {
   autostart = true
 
   network_interface {
-    network_id     = libvirt_network.cluster_network.id
+    network_id     = libvirt_network.cluster_network[0].id
     wait_for_lease = true
   }
 
